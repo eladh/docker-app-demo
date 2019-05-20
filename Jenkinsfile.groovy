@@ -4,8 +4,7 @@ rtIpAddress = rtFullUrl - ~/^http?.:\/\// - ~/\/artifactory$/
 
 buildInfo = Artifactory.newBuildInfo()
 
-properties([parameters([string(name: 'XRAY_SCAN', description: 'Run With Xray Scan', defaultValue: 'NO')])])
-
+setNewProps();
 
 podTemplate(label: 'jenkins-pipeline' , cloud: 'k8s' , containers: [
         containerTemplate(name: 'docker', image: 'docker', command: 'cat', ttyEnabled: true , privileged: true)],
@@ -131,3 +130,13 @@ podTemplate(label: 'promote-template' , cloud: 'k8s' , containers: []) {
         }
     }
 }
+
+void setNewProps() {
+    if  (params.XRAY_SCAN == null) {
+        properties([parameters([string(name: 'XRAY_SCAN', defaultValue: 'NO')])])
+        currentBuild.result = 'SUCCESS'
+        error('Aborting the build to generate params')
+    }
+}
+
+
