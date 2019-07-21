@@ -1,8 +1,8 @@
-server = Artifactory.server "artifactory"
-rtFullUrl = server.url
-rtIpAddress = rtFullUrl - ~/^http?.:\/\// - ~/\/artifactory$/
-
-buildInfo = Artifactory.newBuildInfo()
+def server = Artifactory.server "artifactory"
+def rtFullUrl = server.url
+def rtIpAddress = rtFullUrl - ~/^http?.:\/\// - ~/\/artifactory$/
+def buildInfo = Artifactory.newBuildInfo()
+def rtDocker = Artifactory.docker server: server
 
 setNewProps();
 
