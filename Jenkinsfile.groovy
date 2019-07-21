@@ -6,38 +6,42 @@ buildInfo = Artifactory.newBuildInfo()
 
 setNewProps();
 
-podTemplate(label: 'jenkins-pipeline' , cloud: 'k8s' , containers: [
-        containerTemplate(name: 'docker', image: 'docker', command: 'cat', ttyEnabled: true , privileged: true)],
-        volumes: [hostPathVolume(mountPath: '/var/run/docker.sock', hostPath: '/var/run/docker.sock')]) {
+podTemplate(label: 'dind-template' , cloud: 'k8s' , containers: [
+        containerTemplate(name: 'dind', image: 'odavid/jenkins-jnlp-slave:latest',
+                command: '/usr/local/bin/wrapdocker', ttyEnabled: true , privileged: true)]) {
 
-    node('jenkins-pipeline') {
 
-        stage('Cleanup') {
-            cleanWs()
-        }
+    node('dind-template') {
+        stage('Docker dind') {
+            container('dind') {
 
-        stage('Clone sources') {
-            git url: 'https://github.com/eladh/docker-app-demo.git', credentialsId: 'github'
-        }
+                stage('Cleanup') {
+                    cleanWs()
+                }
 
-        stage('Download Dependencies') {
-            try {
-                def pipelineUtils = load 'pipelineUtils.groovy'
+                stage('Clone sources') {
+                    git url: 'https://github.com/eladh/docker-app-demo.git', credentialsId: 'github'
+                }
 
-                pipelineUtils.downloadArtifact(rtFullUrl, "gradle-local", "*demo-gradle/*", "jar", buildInfo, false)
-                pipelineUtils.downloadArtifact(rtFullUrl, "npm-local", "*client-app*", "tgz", buildInfo, true)
-            } catch (Exception e) {
-                println "Caught Exception during resolution. Message ${e.message}"
-                throw e as java.lang.Throwable
-            }
-        }
+                stage('Download Dependencies') {
+                    try {
+                        def pipelineUtils = load 'pipelineUtils.groovy'
 
-        stage('Docker build') {
-            def rtDocker = Artifactory.docker server: server
+                        pipelineUtils.downloadArtifact(rtFullUrl, "gradle-local", "*demo-gradle/*", "jar", buildInfo, false)
+                        pipelineUtils.downloadArtifact(rtFullUrl, "npm-local", "*client-app*", "tgz", buildInfo, true)
+                    } catch (Exception e) {
+                        println "Caught Exception during resolution. Message ${e.message}"
+                        throw e as java.lang.Throwable
+                    }
+                }
 
-            container('docker') {
+                withCredentials([string(credentialsId: 'artipublickey', variable: 'CERT')]) {
+                    sh "mkdir -p /etc/docker/certs.d/docker.$rtIpAddress"
+                    sh "echo '${CERT}' |  base64 -d >> /etc/docker/certs.d/docker.$rtIpAddress/artifactory.crt"
+                }
+
                 docker.withRegistry("https://docker.$rtIpAddress", 'artifactorypass') {
-                    sh("chmod 777 /var/run/docker.sock")
+
                     def dockerImageTag = "docker.$rtIpAddress/docker-app:${env.BUILD_NUMBER}"
                     def dockerImageTagLatest = "docker.$rtIpAddress/docker-app:latest"
 
@@ -51,28 +55,8 @@ podTemplate(label: 'jenkins-pipeline' , cloud: 'k8s' , containers: [
                     rtDocker.push(dockerImageTag, "docker-local", buildInfo)
                     rtDocker.push(dockerImageTagLatest, "docker-local", buildInfo)
                     server.publishBuildInfo buildInfo
-                }
-            }
-        }
-    }
-}
 
 
-podTemplate(label: 'dind-template' , cloud: 'k8s' , containers: [
-        containerTemplate(name: 'dind', image: 'odavid/jenkins-jnlp-slave:latest',
-                command: '/usr/local/bin/wrapdocker', ttyEnabled: true , privileged: true)]) {
-
-
-    node('dind-template') {
-        stage('Docker dind') {
-            container('dind') {
-
-                withCredentials([string(credentialsId: 'artipublickey', variable: 'CERT')]) {
-                    sh "mkdir -p /etc/docker/certs.d/docker.$rtIpAddress"
-                    sh "echo '${CERT}' |  base64 -d >> /etc/docker/certs.d/docker.$rtIpAddress/artifactory.crt"
-                }
-
-                docker.withRegistry("https://docker.$rtIpAddress", 'artifactorypass') {
                     sh("docker ps")
                     tag = "docker.$rtIpAddress/docker-app:${env.BUILD_NUMBER}"
 
