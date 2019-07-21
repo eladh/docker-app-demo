@@ -3,7 +3,6 @@ rtFullUrl = server.url
 rtIpAddress = rtFullUrl - ~/^http?.:\/\// - ~/\/artifactory$/
 
 buildInfo = Artifactory.newBuildInfo()
-rtDocker = Artifactory.docker server: server
 
 setNewProps();
 
@@ -49,17 +48,14 @@ podTemplate(label: 'dind-template' , cloud: 'k8s' , containers: [
                     buildInfo.env.capture = true
 
 
-                    newImage = docker.build(dockerImageTag, "--build-arg DOCKER_REGISTRY_URL=docker.$rtIpAddress .")
-                    newImageLatest = docker.build(dockerImageTagLatest, "--build-arg DOCKER_REGISTRY_URL=docker.$rtIpAddress .")
+                    docker.build(dockerImageTag, "--build-arg DOCKER_REGISTRY_URL=docker.$rtIpAddress .")
+                    docker.build(dockerImageTagLatest, "--build-arg DOCKER_REGISTRY_URL=docker.$rtIpAddress .")
 
 
-                    newImage.push()
-                    newImageLatest.push()
-
+                    rtDocker.push(dockerImageTag, "docker-local", buildInfo)
+                    rtDocker.push(dockerImageTagLatest, "docker-local", buildInfo)
                     server.publishBuildInfo buildInfo
 
-
-                    sh("docker ps")
                     tag = "docker.$rtIpAddress/docker-app:${env.BUILD_NUMBER}"
 
                     docker.image(tag).withRun('-p 9191:81 -e “SPRING_PROFILES_ACTIVE=local” ') { c ->
@@ -124,5 +120,3 @@ void setNewProps() {
         error('Aborting the build to generate params')
     }
 }
-
-
