@@ -52,13 +52,9 @@ podTemplate(label: 'dind-template' , cloud: 'k8s' , containers: [
                     newImage = docker.build(dockerImageTag, "--build-arg DOCKER_REGISTRY_URL=docker.$rtIpAddress .")
                     newImageLatest = docker.build(dockerImageTagLatest, "--build-arg DOCKER_REGISTRY_URL=docker.$rtIpAddress .")
 
-//
-//                    newImage.push()
-//                    newImageLatest.push()
 
-
-                    buildInfo = rtDocker.push(dockerImageTag, "docker-local", buildInfo)
-
+                    newImage.push()
+                    newImageLatest.push()
 
                     server.publishBuildInfo buildInfo
 
