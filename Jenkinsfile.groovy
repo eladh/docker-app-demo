@@ -49,12 +49,13 @@ podTemplate(label: 'dind-template' , cloud: 'k8s' , containers: [
                     buildInfo.env.capture = true
 
 
-                    docker.build(dockerImageTag, "--build-arg DOCKER_REGISTRY_URL=docker.$rtIpAddress .")
-                    docker.build(dockerImageTagLatest, "--build-arg DOCKER_REGISTRY_URL=docker.$rtIpAddress .")
+                    newImage = docker.build(dockerImageTag, "--build-arg DOCKER_REGISTRY_URL=docker.$rtIpAddress .")
+                    newImageLatest = docker.build(dockerImageTagLatest, "--build-arg DOCKER_REGISTRY_URL=docker.$rtIpAddress .")
 
 
-                    rtDocker.push(dockerImageTag, "docker-local", buildInfo)
-                    rtDocker.push(dockerImageTagLatest, "docker-local", buildInfo)
+                    newImage.push()
+                    newImageLatest.push()
+
                     server.publishBuildInfo buildInfo
 
 
