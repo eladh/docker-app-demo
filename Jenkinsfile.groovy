@@ -3,6 +3,7 @@ rtFullUrl = server.url
 rtIpAddress = rtFullUrl - ~/^http?.:\/\// - ~/\/artifactory$/
 
 buildInfo = Artifactory.newBuildInfo()
+rtDocker = Artifactory.docker server: server
 
 setNewProps();
 
