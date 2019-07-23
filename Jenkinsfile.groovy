@@ -1,48 +1,42 @@
 server = Artifactory.server "artifactory"
 rtFullUrl = server.url
 rtIpAddress = rtFullUrl - ~/^http?.:\/\// - ~/\/artifactory$/
+rtDocker = Artifactory.docker server: server
 
 buildInfo = Artifactory.newBuildInfo()
-rtDocker = Artifactory.docker server: server , host: "tcp://localhost:2375"
 
 setNewProps();
 
-podTemplate(label: 'dind-template' , cloud: 'k8s' , containers: [
-        containerTemplate(name: 'dind', image: 'odavid/jenkins-jnlp-slave:latest',
-                command: '/usr/local/bin/wrapdocker', ttyEnabled: true , privileged: true)]) {
+podTemplate(label: 'jenkins-pipeline' , cloud: 'k8s' , containers: [
+        containerTemplate(name: 'docker', image: 'docker', command: 'cat', ttyEnabled: true , privileged: true)],
+        volumes: [hostPathVolume(mountPath: '/var/run/docker.sock', hostPath: '/var/run/docker.sock')]) {
 
+    node('jenkins-pipeline') {
 
-    node('dind-template') {
-        stage('Docker dind') {
-            container('dind') {
+        stage('Cleanup') {
+            cleanWs()
+        }
 
-                stage('Cleanup') {
-                    cleanWs()
-                }
+        stage('Clone sources') {
+            git url: 'https://github.com/eladh/docker-app-demo.git', credentialsId: 'github'
+        }
 
-                stage('Clone sources') {
-                    git url: 'https://github.com/eladh/docker-app-demo.git', credentialsId: 'github'
-                }
+        stage('Download Dependencies') {
+            try {
+                def pipelineUtils = load 'pipelineUtils.groovy'
 
-                stage('Download Dependencies') {
-                    try {
-                        def pipelineUtils = load 'pipelineUtils.groovy'
+                pipelineUtils.downloadArtifact(rtFullUrl, "gradle-local", "*demo-gradle/*", "jar", buildInfo, false)
+                pipelineUtils.downloadArtifact(rtFullUrl, "npm-local", "*client-app*", "tgz", buildInfo, true)
+            } catch (Exception e) {
+                println "Caught Exception during resolution. Message ${e.message}"
+                throw e as java.lang.Throwable
+            }
+        }
 
-                        pipelineUtils.downloadArtifact(rtFullUrl, "gradle-local", "*demo-gradle/*", "jar", buildInfo, false)
-                        pipelineUtils.downloadArtifact(rtFullUrl, "npm-local", "*client-app*", "tgz", buildInfo, true)
-                    } catch (Exception e) {
-                        println "Caught Exception during resolution. Message ${e.message}"
-                        throw e as java.lang.Throwable
-                    }
-                }
-
-                withCredentials([string(credentialsId: 'artipublickey', variable: 'CERT')]) {
-                    sh "mkdir -p /etc/docker/certs.d/docker.$rtIpAddress"
-                    sh "echo '${CERT}' |  base64 -d >> /etc/docker/certs.d/docker.$rtIpAddress/artifactory.crt"
-                }
-
+        stage('Docker build') {
+            container('docker') {
                 docker.withRegistry("https://docker.$rtIpAddress", 'artifactorypass') {
-
+                    sh("chmod 777 /var/run/docker.sock")
                     def dockerImageTag = "docker.$rtIpAddress/docker-app:${env.BUILD_NUMBER}"
                     def dockerImageTagLatest = "docker.$rtIpAddress/docker-app:latest"
 
@@ -56,7 +50,29 @@ podTemplate(label: 'dind-template' , cloud: 'k8s' , containers: [
                     rtDocker.push(dockerImageTag, "docker-local", buildInfo)
                     rtDocker.push(dockerImageTagLatest, "docker-local", buildInfo)
                     server.publishBuildInfo buildInfo
+                }
+            }
+        }
+    }
+}
 
+
+podTemplate(label: 'dind-template' , cloud: 'k8s' , containers: [
+        containerTemplate(name: 'dind', image: 'odavid/jenkins-jnlp-slave:latest',
+                command: '/usr/local/bin/wrapdocker', ttyEnabled: true , privileged: true)]) {
+
+
+    node('dind-template') {
+        stage('Docker dind') {
+            container('dind') {
+
+                withCredentials([string(credentialsId: 'artipublickey', variable: 'CERT')]) {
+                    sh "mkdir -p /etc/docker/certs.d/docker.$rtIpAddress"
+                    sh "echo '${CERT}' |  base64 -d >> /etc/docker/certs.d/docker.$rtIpAddress/artifactory.crt"
+                }
+
+                docker.withRegistry("https://docker.$rtIpAddress", 'artifactorypass') {
+                    sh("docker ps")
                     tag = "docker.$rtIpAddress/docker-app:${env.BUILD_NUMBER}"
 
                     docker.image(tag).withRun('-p 9191:81 -e “SPRING_PROFILES_ACTIVE=local” ') { c ->
